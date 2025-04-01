@@ -1,0 +1,92 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gimnazist - Автоматизированный поиск</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .container {
+            max-width: 800px;
+            margin-top: 2rem;
+        }
+        .card {
+            border-radius: 15px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .progress {
+            height: 25px;
+            border-radius: 12px;
+        }
+        .btn {
+            border-radius: 8px;
+            padding: 8px 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="card-body">
+                <h2 class="card-title text-center mb-4">Gimnazist</h2>
+                
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <label class="form-label">Лимит поисков:</label>
+                        <select class="form-select" id="searchLimit">
+                            <option value="35">35 (Desktop)</option>
+                            <option value="30">30 (Mobile)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Интервал (минуты):</label>
+                        <select class="form-select" id="searchInterval">
+                            <option value="5">5</option>
+                            <option value="3">3</option>
+                            <option value="7">7</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="multitab">
+                            <label class="form-check-label" for="multitab">
+                                Мультитаб режим
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Режим поиска:</label>
+                        <select class="form-select" id="searchEngine">
+                            <option value="desktop">Desktop</option>
+                            <option value="mobile">Mobile</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="progress mb-4">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                         role="progressbar" 
+                         style="width: 0%" 
+                         id="searchProgress">0%</div>
+                </div>
+
+                <div class="text-center">
+                    <button class="btn btn-danger" id="stopButton">
+                        <i class="bi bi-stop-fill"></i> Остановить
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/script.js"></script>
+</body>
+</html>
