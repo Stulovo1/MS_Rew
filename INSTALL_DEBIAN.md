@@ -12,6 +12,7 @@
 ### 1. Подготовка системы
 ```bash
 # Обновление системы
+apt install sudo
 sudo apt update
 sudo apt upgrade -y
 
