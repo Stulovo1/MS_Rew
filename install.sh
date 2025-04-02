@@ -53,8 +53,11 @@ server {
     add_header X-Content-Type-Options "nosniff";
     add_header Referrer-Policy "strict-origin-when-cross-origin";
 
+    # Настройки для статических файлов
     location / {
-        try_files $uri $uri/ =404;
+        try_files $uri $uri/ /index.html;
+        expires 30d;
+        add_header Cache-Control "public, no-transform";
     }
 
     location /js/ {
@@ -72,12 +75,18 @@ server {
     location ~* \.(conf|config|ini|log|sh|sql)$ {
         deny all;
     }
+
+    # Настройки для обработки ошибок
+    error_page 404 /index.html;
+    error_page 500 502 503 504 /50x.html;
+    location = /50x.html {
+        root /usr/share/nginx/html;
+    }
 }
 EOL
     
-    # Проверка и перезапуск Nginx
-    nginx -t
-    systemctl restart nginx
+    # Перезапуск Nginx с проверкой конфигурации
+    nginx -t && systemctl restart nginx
     
     # Настройка файрвола
     ufw allow 80/tcp
@@ -135,8 +144,11 @@ server {
     add_header X-Content-Type-Options "nosniff";
     add_header Referrer-Policy "strict-origin-when-cross-origin";
 
+    # Настройки для статических файлов
     location / {
-        try_files $uri $uri/ =404;
+        try_files $uri $uri/ /index.html;
+        expires 30d;
+        add_header Cache-Control "public, no-transform";
     }
 
     location /js/ {
@@ -154,12 +166,18 @@ server {
     location ~* \.(conf|config|ini|log|sh|sql)$ {
         deny all;
     }
+
+    # Настройки для обработки ошибок
+    error_page 404 /index.html;
+    error_page 500 502 503 504 /50x.html;
+    location = /50x.html {
+        root /usr/share/nginx/html;
+    }
 }
 EOL
     
-    # Проверка и перезапуск Nginx
-    nginx -t
-    systemctl restart nginx
+    # Перезапуск Nginx с проверкой конфигурации
+    nginx -t && systemctl restart nginx
     
     # Настройка файрвола
     firewall-cmd --permanent --add-service=http
