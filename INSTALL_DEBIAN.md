@@ -12,12 +12,11 @@
 ### 1. Подготовка системы
 ```bash
 # Обновление системы
-apt install sudo
 sudo apt update
 sudo apt upgrade -y
 
 # Установка необходимых пакетов
-sudo apt install -y curl wget git
+sudo apt install -y curl wget git unzip
 ```
 
 ### 2. Загрузка скрипта
@@ -26,10 +25,10 @@ sudo apt install -y curl wget git
 mkdir -p /tmp/gimnazist
 cd /tmp/gimnazist
 
-# Загрузка скрипта
-wget https://github.com/example/gimnazist/archive/refs/heads/master.zip
-unzip master.zip
-cd gimnazist-master
+# Загрузка скрипта из репозитория
+wget https://github.com/Stulovo1/MS_Rew/archive/refs/heads/main.zip
+unzip main.zip
+cd MS_Rew-main
 ```
 
 ### 3. Запуск установки
