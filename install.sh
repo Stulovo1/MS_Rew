@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Название скрипта
+SCRIPT_NAME="Gimnazist"
+VERSION="1.0.0"
+
 # Проверка на root права
 if [ "$EUID" -ne 0 ]; then 
     echo "Пожалуйста, запустите скрипт с правами root"
@@ -15,42 +19,58 @@ fi
 
 # Функция для установки на Debian/Ubuntu
 install_debian() {
-    echo "Установка на Debian/Ubuntu..."
+    echo "Установка $SCRIPT_NAME на Debian/Ubuntu..."
     
     # Обновление системы
     apt update
     apt upgrade -y
     
     # Установка необходимых пакетов
-    apt install -y nginx apache2-utils certbot python3-certbot-nginx fail2ban
+    apt install -y nginx apache2-utils certbot python3-certbot-nginx fail2ban ufw
     
     # Создание директории
-    mkdir -p /var/www/bing_autosearch
+    mkdir -p /var/www/gimnazist
     
     # Копирование файлов
-    cp -r ./* /var/www/bing_autosearch/
+    cp -r ./* /var/www/gimnazist/
     
     # Настройка прав доступа
-    chown -R www-data:www-data /var/www/bing_autosearch
-    chmod -R 755 /var/www/bing_autosearch
+    chown -R www-data:www-data /var/www/gimnazist
+    chmod -R 755 /var/www/gimnazist
     
     # Настройка Nginx
-    cat > /etc/nginx/conf.d/bing_autosearch.conf << 'EOL'
+    cat > /etc/nginx/conf.d/gimnazist.conf << 'EOL'
 server {
     listen 80;
     server_name _;
 
-    root /var/www/bing_autosearch;
+    root /var/www/gimnazist;
     index index.html;
+
+    # Базовые настройки безопасности
+    add_header X-Frame-Options "SAMEORIGIN";
+    add_header X-XSS-Protection "1; mode=block";
+    add_header X-Content-Type-Options "nosniff";
+    add_header Referrer-Policy "strict-origin-when-cross-origin";
 
     location / {
         try_files $uri $uri/ =404;
     }
 
     location /js/ {
-        alias /var/www/bing_autosearch/js/;
+        alias /var/www/gimnazist/js/;
         expires 30d;
         add_header Cache-Control "public, no-transform";
+    }
+
+    # Запрет доступа к скрытым файлам
+    location ~ /\. {
+        deny all;
+    }
+
+    # Запрет доступа к файлам конфигурации
+    location ~* \.(conf|config|ini|log|sh|sql)$ {
+        deny all;
     }
 }
 EOL
@@ -64,46 +84,75 @@ EOL
     ufw allow 443/tcp
     ufw --force enable
     
-    echo "Установка завершена!"
+    # Настройка fail2ban
+    cat > /etc/fail2ban/jail.d/gimnazist.conf << 'EOL'
+[gimnazist]
+enabled = true
+port = http,https
+filter = gimnazist
+logpath = /var/log/nginx/access.log
+maxretry = 3
+bantime = 3600
+EOL
+    
+    systemctl restart fail2ban
+    
+    echo "Установка $SCRIPT_NAME завершена!"
 }
 
 # Функция для установки на CentOS/RHEL
 install_centos() {
-    echo "Установка на CentOS/RHEL..."
+    echo "Установка $SCRIPT_NAME на CentOS/RHEL..."
     
     # Обновление системы
     yum update -y
     
     # Установка необходимых пакетов
-    yum install -y nginx certbot python3-certbot-nginx fail2ban
+    yum install -y nginx certbot python3-certbot-nginx fail2ban firewalld
     
     # Создание директории
-    mkdir -p /var/www/bing_autosearch
+    mkdir -p /var/www/gimnazist
     
     # Копирование файлов
-    cp -r ./* /var/www/bing_autosearch/
+    cp -r ./* /var/www/gimnazist/
     
     # Настройка прав доступа
-    chown -R nginx:nginx /var/www/bing_autosearch
-    chmod -R 755 /var/www/bing_autosearch
+    chown -R nginx:nginx /var/www/gimnazist
+    chmod -R 755 /var/www/gimnazist
     
     # Настройка Nginx
-    cat > /etc/nginx/conf.d/bing_autosearch.conf << 'EOL'
+    cat > /etc/nginx/conf.d/gimnazist.conf << 'EOL'
 server {
     listen 80;
     server_name _;
 
-    root /var/www/bing_autosearch;
+    root /var/www/gimnazist;
     index index.html;
+
+    # Базовые настройки безопасности
+    add_header X-Frame-Options "SAMEORIGIN";
+    add_header X-XSS-Protection "1; mode=block";
+    add_header X-Content-Type-Options "nosniff";
+    add_header Referrer-Policy "strict-origin-when-cross-origin";
 
     location / {
         try_files $uri $uri/ =404;
     }
 
     location /js/ {
-        alias /var/www/bing_autosearch/js/;
+        alias /var/www/gimnazist/js/;
         expires 30d;
         add_header Cache-Control "public, no-transform";
+    }
+
+    # Запрет доступа к скрытым файлам
+    location ~ /\. {
+        deny all;
+    }
+
+    # Запрет доступа к файлам конфигурации
+    location ~* \.(conf|config|ini|log|sh|sql)$ {
+        deny all;
     }
 }
 EOL
@@ -117,7 +166,20 @@ EOL
     firewall-cmd --permanent --add-service=https
     firewall-cmd --reload
     
-    echo "Установка завершена!"
+    # Настройка fail2ban
+    cat > /etc/fail2ban/jail.d/gimnazist.conf << 'EOL'
+[gimnazist]
+enabled = true
+port = http,https
+filter = gimnazist
+logpath = /var/log/nginx/access.log
+maxretry = 3
+bantime = 3600
+EOL
+    
+    systemctl restart fail2ban
+    
+    echo "Установка $SCRIPT_NAME завершена!"
 }
 
 # Основная логика установки
@@ -138,5 +200,8 @@ if [ ! -z "$domain" ]; then
     certbot --nginx -d $domain
 fi
 
-echo "Установка завершена успешно!"
-echo "Для просмотра подробных инструкций по использованию, откройте файл INSTALL.md" 
+# Создание файла версии
+echo "VERSION=$VERSION" > /var/www/gimnazist/version.txt
+
+echo "Установка $SCRIPT_NAME версии $VERSION завершена успешно!"
+echo "Для просмотра подробных инструкций по использованию, откройте файл HELP.md" 
