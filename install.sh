@@ -1,44 +1,87 @@
+# --- НАЧАЛО ФИНАЛЬНОГО ИСПРАВЛЕНИЯ ---
+
+# ШАГ 1: ИСПРАВЛЕНИЕ LAMPA
+echo "--> Исправляем Lampa: возвращаем запуск от имени root..."
+# Убираем строку "User=www-data" из файла службы
+sudo sed -i '/User=www-data/d' /etc/systemd/system/lampac.service
+# Возвращаем владельца папки обратно root
+sudo chown -R root:root /home/lampac
+# Перечитываем конфиги и перезапускаем Lampa
+sudo systemctl daemon-reload
+sudo systemctl restart lampac
+
+# ШАГ 2: ИСПРАВЛЕНИЕ NGINX (400 Bad Request)
+echo "--> Исправляем Nginx: меняем заголовок Host..."
+# Получаем текущий секретный путь, чтобы конфиг был правильным
+BASE_PATH=$(sudo x-ui settings | grep 'WebBasePath' | awk '{print $3}')
+if [ -z "$BASE_PATH" ]; then
+    echo "!!! ОШИБКА: Не удалось определить WebBasePath. Настройка Nginx пропущена. !!!"
+else
+    # Пересоздаем конфиг Nginx с правильным proxy_set_header
+    sudo tee /etc/nginx/sites-available/default > /dev/null <<EOF
+server {
+    listen 80 default_server; server_name _;
+    location /adguard/ {
+        proxy_pass http://127.0.0.1:3000/; proxy_set_header Host \$proxy_host; proxy_redirect / /adguard/;
+        sub_filter_once off; sub_filter 'action="/' 'action="/adguard/'; sub_filter 'href="/' 'href="/adguard/'; sub_filter 'src="/' 'src="/adguard/';
+    }
+    location /lampa/ {
+        proxy_pass http://127.0.0.1:8090/; proxy_http_version 1.1; proxy_set_header Upgrade \$http_upgrade; proxy_set_header Connection "upgrade"; proxy_set_header Host \$proxy_host; proxy_redirect / /lampa/;
+        sub_filter_once off; sub_filter 'href="/' 'href="/lampa/'; sub_filter 'src="/' 'src="/lampa/';
+    }
+    location / {
+        proxy_pass http://127.0.0.1:2053${BASE_PATH}; proxy_set_header Host \$proxy_host;
+    }
+}
+EOF
+    # Перезапускаем Nginx
+    sudo systemctl restart nginx
+fi
+
+echo "--- ФИНАЛЬНОЕ ИСПРАВЛЕНИЕ ЗАВЕРШЕНО ---"
+echo "Проверьте статус Lampa и адреса в браузере."
+sleep 3
+sudo systemctl status lampac
+
+```После выполнения этого скрипта все три сервиса должны заработать корректно.
+
+---
+
+### Шаг 2: "Платиновый" финальный скрипт (v3.0)
+
+Я внес эти последние, самые важные исправления в наш главный скрипт. Теперь он действительно финальный.
+
+```bash
 #!/bin/bash
-
 # ====================================================================================
-#              ЗОЛОТОЙ ФИНАЛЬНЫЙ СКРИПТ УСТАНОВКИ v1.0
+#              ПЛАТИНОВЫЙ ФИНАЛЬНЫЙ СКРИПТ УСТАНОВКИ v3.0
 # ====================================================================================
-# Репозиторий: https://github.com/Stulovo1/MS_Rew
-# ОС: Ubuntu 20.04
-# Включает: AdGuard, Lampa, x-ui (англ.) с полной автоматической настройкой и всеми исправлениями.
+# Учтены все проблемы: права Lampa, заголовок Host в Nginx, автоматизация.
 
-echo "--- Начало установки мультисервисного сервера. Этот скрипт делает ВСЁ. ---"
+echo "--- Начало установки мультисервисного сервера v3.0 ---"
 
-# --- ШАГ 1: Обновление системы и установка базовых пакетов ---
-echo "--> [1/6] Обновление системы и установка зависимостей (nginx, ufw, curl...)"
+# --- ШАГ 1: Базовая настройка ---
+echo "--> [1/6] Обновление и установка зависимостей..."
 sudo apt-get update > /dev/null 2>&1
 sudo apt-get install -y curl wget unzip ufw nginx > /dev/null 2>&1
 
-# --- ШАГ 2: Установка и ПОЛНОЕ ИСПРАВЛЕНИЕ Lampa ---
+# --- ШАГ 2: Установка и ИСПРАВЛЕНИЕ Lampa ---
 echo "--> [2/6] Установка Lampa..."
 sudo apt-get install -y libnss3-dev libgdk-pixbuf2.0-dev libgtk-3-dev libxss-dev libasound2 xvfb coreutils > /dev/null 2>&1
 curl -L -k -o dotnet-install.sh https://dot.net/v1/dotnet-install.sh
-sudo chmod +x dotnet-install.sh
-sudo ./dotnet-install.sh --channel 6.0 --runtime aspnetcore --install-dir /usr/share/dotnet > /dev/null 2>&1
+sudo chmod +x dotnet-install.sh && sudo ./dotnet-install.sh --channel 6.0 --runtime aspnetcore --install-dir /usr/share/dotnet > /dev/null 2>&1
 sudo ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
 rm dotnet-install.sh
-
 DEST="/home/lampac"
-sudo mkdir -p $DEST
-cd $DEST
+sudo mkdir -p $DEST && cd $DEST
 sudo curl -L -k -o publish.zip https://github.com/immisterio/Lampac/releases/latest/download/publish.zip > /dev/null 2>&1
-sudo unzip -o publish.zip > /dev/null 2>&1
-sudo rm -f publish.zip
+sudo unzip -o publish.zip > /dev/null 2>&1 && sudo rm -f publish.zip
 cd ~
 
-echo "--> [2/6] Применение исправления №1: Замена конфига Lampa на рабочий..."
+echo "--> [2/6] Применение исправлений для Lampa (конфиг и запуск от root)..."
 sudo tee /home/lampac/appsettings.json > /dev/null <<'EOF'
-{
-  "Kestrel": { "EndPoints": { "Http": { "Url": "http://0.0.0.0:8090" } } }, "AllowedHosts": "*"
-}
+{ "Kestrel": { "EndPoints": { "Http": { "Url": "http://0.0.0.0:8090" } } }, "AllowedHosts": "*" }
 EOF
-
-echo "--> [2/6] Применение исправления №2: Настройка прав доступа для Lampa..."
 sudo tee /etc/systemd/system/lampac.service > /dev/null <<EOF
 [Unit]
 Description=Lampac
@@ -48,69 +91,42 @@ After=network.target
 WorkingDirectory=$DEST
 ExecStart=/usr/bin/dotnet Lampac.dll
 Restart=always
-User=www-data
 LimitNOFILE=32000
 [Install]
 WantedBy=multi-user.target
 EOF
-sudo chown -R www-data:www-data /home/lampac
-sudo systemctl daemon-reload
-sudo systemctl restart lampac.service
+sudo systemctl daemon-reload && sudo systemctl restart lampac.service
 
 # --- ШАГ 3: Установка AdGuard Home ---
-echo "--> [3/6] Установка AdGuard Home в фоновом режиме..."
+echo "--> [3/6] Установка AdGuard Home..."
 wget --no-verbose -O - https://raw.githubusercontent.com/AdguardTeam/AdGuardHome/master/scripts/install.sh | sudo sh -s -- -v > /dev/null 2>&1
 
 # --- ШАГ 4: Установка англоязычной панели x-ui ---
-echo "--> [4/6] Установка англоязычной панели x-ui."
+echo "--> [4/6] Установка англоязычной панели x-ui..."
 echo "!!! ВНИМАНИЕ: СЛЕДУЮЩИЙ ШАГ ТРЕБУЕТ ВАШЕГО УЧАСТИЯ !!!"
-echo "Вам нужно будет ввести логин, пароль и порт (используйте 2053)."
 bash <(curl -Ls https://raw.githubusercontent.com/alireza0/x-ui/master/install.sh)
 
 # --- ШАГ 5: Финальная, самая надежная настройка Nginx ---
-echo "--> [5/6] Получение секретного пути x-ui для настройки Nginx..."
+echo "--> [5/6] Автоматическая настройка Nginx (исправлен Host header)..."
+sleep 2
 BASE_PATH=$(sudo x-ui settings | grep 'WebBasePath' | awk '{print $3}')
 if [ -z "$BASE_PATH" ]; then
-    echo "!!! ОШИБКА: Не удалось автоматически определить WebBasePath. Настройка Nginx пропущена. !!!"
+    echo "!!! ОШИБКА: Не удалось определить WebBasePath. Настройка Nginx пропущена. !!!"
 else
-    echo "--> Секретный путь найден. Настройка Nginx с полным исправлением ссылок..."
+    echo "--> Секретный путь найден. Настройка Nginx..."
     sudo tee /etc/nginx/sites-available/default > /dev/null <<EOF
 server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
-    server_name _;
-
-    # Маршрут для AdGuard с исправлением всех ссылок
+    listen 80 default_server; server_name _;
     location /adguard/ {
-        proxy_pass http://127.0.0.1:3000/;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_redirect / /adguard/;
-        sub_filter_once off;
-        sub_filter 'action="/' 'action="/adguard/';
-        sub_filter 'href="/' 'href="/adguard/';
-        sub_filter 'src="/' 'src="/adguard/';
+        proxy_pass http://127.0.0.1:3000/; proxy_set_header Host \$proxy_host; proxy_redirect / /adguard/;
+        sub_filter_once off; sub_filter 'action="/' 'action="/adguard/'; sub_filter 'href="/' 'href="/adguard/'; sub_filter 'src="/' 'src="/adguard/';
     }
-
-    # Маршрут для Lampa с исправлением всех ссылок
     location /lampa/ {
-        proxy_pass http://127.0.0.1:8090/;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host \$host;
-        proxy_redirect / /lampa/;
-        sub_filter_once off;
-        sub_filter 'href="/' 'href="/lampa/';
-        sub_filter 'src="/' 'src="/lampa/';
+        proxy_pass http://127.0.0.1:8090/; proxy_http_version 1.1; proxy_set_header Upgrade \$http_upgrade; proxy_set_header Connection "upgrade"; proxy_set_header Host \$proxy_host; proxy_redirect / /lampa/;
+        sub_filter_once off; sub_filter 'href="/' 'href="/lampa/'; sub_filter 'src="/' 'src="/lampa/';
     }
-
-    # Маршрут по умолчанию для X-UI с учетом секретного пути
     location / {
-        proxy_pass http://127.0.0.1:2053${BASE_PATH};
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_pass http://127.0.0.1:2053${BASE_PATH}; proxy_set_header Host \$proxy_host;
     }
 }
 EOF
@@ -118,26 +134,14 @@ EOF
 fi
 
 # --- ШАГ 6: Настройка брандмауэра ---
-echo "--> [6/6] Настройка брандмауэра (UFW)."
+echo "--> [6/6] Настройка брандмауэра..."
 sudo ufw allow ssh > /dev/null 2>&1
 sudo ufw allow 80/tcp > /dev/null 2>&1
 sudo ufw --force enable
 
 # --- Завершение ---
-echo ""
-echo "================================================================="
-echo "       УСТАНОВКА ПОЛНОСТЬЮ ЗАВЕРШЕНА!       "
-echo "================================================================="
-echo ""
-echo "Адреса для доступа к сервисам:"
-echo "Панель x-ui:  http://185.217.199.157/"
-echo "AdGuard Home: http://185.217.199.157/adguard/"
-echo "Lampa:        http://185.217.199.157/lampa/"
-echo ""
-echo "--- ВАЖНЫЕ ДАЛЬНЕЙШИЕ ШАГИ ---"
-echo "1. AdGuard: При первом входе пройдите мастер настройки."
-echo "2. Lampa: В настройках Lampa вручную добавьте IPTV плейлист:"
-echo "   http://m3u.uztv.su/57/moskov.m3u8"
-echo "3. x-ui: Настройте VLESS Reality и правила маршрутизации для РФ."
-echo ""
-echo "================================================================="
+echo "==================== УСТАНОВКА ЗАВЕРШЕНА ===================="
+echo "Панель x-ui:  http://$(curl -s ifconfig.me)/"
+echo "AdGuard Home: http://$(curl -s ifconfig.me)/adguard/"
+echo "Lampa:        http://$(curl -s ifconfig.me)/lampa/"
+echo "==========================================================="
