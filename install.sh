@@ -1,24 +1,17 @@
 #!/bin/bash
 
-# --- Универсальный скрипт установки и настройки 3x-ui, AdGuard Home и Lampa ---
+# --- Универсальный скрипт установки (версия для IP-адреса) ---
 # Репозиторий: https://github.com/Stulovo1/MS_Rew
 # ОС: Ubuntu 24.04
-
-# --- Переменные ---
-# Пользователь должен будет ввести свои данные
-read -p "Введите ваше доменное имя (например, example.com): " DOMAIN
-read -p "Введите субдомен для 3x-ui (например, 3xui): " SUBDOMAIN_3XUI
-read -p "Введите субдомен для AdGuard Home (например, adguard): " SUBDOMAIN_ADGUARD
-read -p "Введите субдомен для Lampa (например, lampa): " SUBDOMAIN_LAMPA
-read -p "Введите ваш email для регистрации SSL-сертификатов Let's Encrypt: " EMAIL
+# Особенность: Не требует домена, доступ по IP:ПОРТ
 
 # --- Обновление системы ---
 echo "Обновление системы..."
 sudo apt update && sudo apt upgrade -y
 
 # --- Установка необходимых пакетов ---
-echo "Установка Nginx, Certbot и других зависимостей..."
-sudo apt install -y nginx certbot python3-certbot-nginx curl wget unzip
+echo "Установка зависимостей..."
+sudo apt install -y curl wget unzip ufw
 
 # --- Установка 3x-ui ---
 echo "Установка 3x-ui..."
@@ -26,6 +19,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.
 
 # --- Установка AdGuard Home ---
 echo "Установка AdGuard Home..."
+# Устанавливаем без запуска мастера настройки в браузере
 wget --no-verbose -O - https://raw.githubusercontent.com/AdguardTeam/AdGuardHome/master/scripts/install.sh | sh -s -- -v
 
 # --- Установка Lampa (Lampac) ---
@@ -64,74 +58,26 @@ EOF
 sudo systemctl enable lampac.service
 sudo systemctl start lampac.service
 
-# --- Настройка Nginx и SSL ---
-echo "Настройка Nginx и получение SSL-сертификатов..."
-
-# Конфигурация для 3x-ui
-sudo tee /etc/nginx/sites-available/$SUBDOMAIN_3XUI.$DOMAIN > /dev/null <<EOF
-server {
-    listen 80;
-    server_name $SUBDOMAIN_3XUI.$DOMAIN;
-
-    location / {
-        proxy_pass http://127.0.0.1:2053; # Порт по умолчанию для 3x-ui, может измениться при установке
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-    }
-}
-EOF
-
-# Конфигурация для AdGuard Home
-sudo tee /etc/nginx/sites-available/$SUBDOMAIN_ADGUARD.$DOMAIN > /dev/null <<EOF
-server {
-    listen 80;
-    server_name $SUBDOMAIN_ADGUARD.$DOMAIN;
-
-    location / {
-        proxy_pass http://127.0.0.1:3000; # Порт для начальной настройки AdGuard
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-    }
-}
-EOF
-
-# Конфигурация для Lampa
-sudo tee /etc/nginx/sites-available/$SUBDOMAIN_LAMPA.$DOMAIN > /dev/null <<EOF
-server {
-    listen 80;
-    server_name $SUBDOMAIN_LAMPA.$DOMAIN;
-
-    location / {
-        proxy_pass http://127.0.0.1:8090; # Порт по умолчанию для Lampac
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "Upgrade";
-        proxy_set_header Host \$host;
-    }
-}
-EOF
-
-# Создание символических ссылок
-sudo ln -s /etc/nginx/sites-available/$SUBDOMAIN_3XUI.$DOMAIN /etc/nginx/sites-enabled/
-sudo ln -s /etc/nginx/sites-available/$SUBDOMAIN_ADGUARD.$DOMAIN /etc/nginx/sites-enabled/
-sudo ln -s /etc/nginx/sites-available/$SUBDOMAIN_LAMPA.$DOMAIN /etc/nginx/sites-enabled/
-
-# Получение SSL-сертификатов
-sudo certbot --nginx -d $SUBDOMAIN_3XUI.$DOMAIN -d $SUBDOMAIN_ADGUARD.$DOMAIN -d $SUBDOMAIN_LAMPA.$DOMAIN --email $EMAIL --agree-tos --no-eff-email -n
-
-# Перезапуск Nginx
-sudo systemctl restart nginx
+# --- Настройка брандмауэра UFW ---
+echo "Настройка брандмауэра..."
+sudo ufw allow ssh # Разрешаем подключения по SSH
+sudo ufw allow 443/tcp # Порт для VLESS Reality
+sudo ufw allow 2053/tcp # Порт для веб-интерфейса 3x-ui
+sudo ufw allow 3000/tcp # Порт для первоначальной настройки AdGuard
+sudo ufw allow 8090/tcp # Порт для Lampa
+sudo ufw --force enable # Включаем брандмауэр
 
 # --- Завершение ---
 echo "================================================================="
 echo "Установка завершена!"
 echo ""
-echo "Адреса для доступа к сервисам:"
-echo "3x-ui: https://$SUBDOMAIN_3XUI.$DOMAIN"
-echo "AdGuard Home: https://$SUBDOMAIN_ADGUARD.$DOMAIN"
-echo "Lampa: https://$SUBDOMAIN_LAMPA.$DOMAIN"
+echo "ВАЖНО: Доступ к сервисам осуществляется по IP-адресу и порту."
+echo "Не забудьте завершить настройку в веб-интерфейсах."
 echo ""
-echo "ВАЖНО: Дальнейшая настройка производится через веб-интерфейсы."
+echo "Адреса для доступа:"
+echo "AdGuard Home (первоначальная настройка): http://185.217.199.157:3000"
+echo "3x-ui (логин/пароль в выводе установки): http://185.217.199.157:2053"
+echo "Lampa: http://185.217.199.157:8090"
+echo ""
+echo "Брандмауэр настроен для разрешения доступов к этим портам."
 echo "================================================================="
