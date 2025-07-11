@@ -1,85 +1,137 @@
 #!/bin/bash
 
-# Цвета для вывода
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
+# --- Универсальный скрипт установки и настройки 3x-ui, AdGuard Home и Lampa ---
+# Репозиторий: https://github.com/Stulovo1/MS_Rew
+# ОС: Ubuntu 24.04
 
-# Проверка прав root
-if [ "$EUID" -ne 0 ]; then
-    echo -e "${RED}Ошибка: Скрипт должен быть запущен с правами root${NC}"
-    exit 1
-fi
+# --- Переменные ---
+# Пользователь должен будет ввести свои данные
+read -p "Введите ваше доменное имя (например, example.com): " DOMAIN
+read -p "Введите субдомен для 3x-ui (например, 3xui): " SUBDOMAIN_3XUI
+read -p "Введите субдомен для AdGuard Home (например, adguard): " SUBDOMAIN_ADGUARD
+read -p "Введите субдомен для Lampa (например, lampa): " SUBDOMAIN_LAMPA
+read -p "Введите ваш email для регистрации SSL-сертификатов Let's Encrypt: " EMAIL
 
-echo -e "${YELLOW}Начало установки Bing Auto Search...${NC}"
+# --- Обновление системы ---
+echo "Обновление системы..."
+sudo apt update && sudo apt upgrade -y
 
-# Обновление системы
-echo -e "${GREEN}Обновление системы...${NC}"
-apt update && apt upgrade -y
+# --- Установка необходимых пакетов ---
+echo "Установка Nginx, Certbot и других зависимостей..."
+sudo apt install -y nginx certbot python3-certbot-nginx curl wget unzip
 
-# Установка необходимых пакетов
-echo -e "${GREEN}Установка необходимых пакетов...${NC}"
-apt install -y nginx git curl certbot python3-certbot-nginx
+# --- Установка 3x-ui ---
+echo "Установка 3x-ui..."
+bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh)
 
-# Создание директории для проекта
-echo -e "${GREEN}Создание директории для проекта...${NC}"
-mkdir -p /var/www/bing_autosearch
-cd /var/www/bing_autosearch
+# --- Установка AdGuard Home ---
+echo "Установка AdGuard Home..."
+wget --no-verbose -O - https://raw.githubusercontent.com/AdguardTeam/AdGuardHome/master/scripts/install.sh | sh -s -- -v
 
-# Клонирование репозитория
-echo -e "${GREEN}Клонирование репозитория...${NC}"
-git clone https://github.com/Stulovo1/MS_Rew.git .
+# --- Установка Lampa (Lampac) ---
+echo "Установка Lampa..."
+sudo apt-get install -y libnss3-dev libgdk-pixbuf2.0-dev libgtk-3-dev libxss-dev libasound2 xvfb coreutils
+curl -L -k -o dotnet-install.sh https://dot.net/v1/dotnet-install.sh
+sudo chmod +x dotnet-install.sh
+sudo ./dotnet-install.sh --channel 6.0 --runtime aspnetcore --install-dir /usr/share/dotnet
+sudo ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
+rm dotnet-install.sh
 
-# Настройка прав доступа
-echo -e "${GREEN}Настройка прав доступа...${NC}"
-chown -R www-data:www-data /var/www/bing_autosearch
-chmod -R 755 /var/www/bing_autosearch
+DEST="/home/lampac"
+sudo mkdir -p $DEST
+cd $DEST
+sudo curl -L -k -o publish.zip https://github.com/immisterio/Lampac/releases/latest/download/publish.zip
+sudo unzip -o publish.zip
+sudo rm -f publish.zip
+cd ~
 
-# Настройка Nginx
-echo -e "${GREEN}Настройка Nginx...${NC}"
-cat > /etc/nginx/sites-available/bing_autosearch << EOF
+sudo tee /etc/systemd/system/lampac.service > /dev/null <<EOF
+[Unit]
+Description=Lampac
+Wants=network.target
+After=network.target
+
+[Service]
+WorkingDirectory=$DEST
+ExecStart=/usr/bin/dotnet Lampac.dll
+Restart=always
+LimitNOFILE=32000
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl enable lampac.service
+sudo systemctl start lampac.service
+
+# --- Настройка Nginx и SSL ---
+echo "Настройка Nginx и получение SSL-сертификатов..."
+
+# Конфигурация для 3x-ui
+sudo tee /etc/nginx/sites-available/$SUBDOMAIN_3XUI.$DOMAIN > /dev/null <<EOF
 server {
     listen 80;
-    server_name _;
-    root /var/www/bing_autosearch;
-    index index.html;
+    server_name $SUBDOMAIN_3XUI.$DOMAIN;
 
     location / {
-        try_files \$uri \$uri/ /index.html;
-    }
-
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico)$ {
-        expires 30d;
-        add_header Cache-Control "public, no-transform";
+        proxy_pass http://127.0.0.1:2053; # Порт по умолчанию для 3x-ui, может измениться при установке
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
     }
 }
 EOF
 
-# Активация конфигурации
-ln -sf /etc/nginx/sites-available/bing_autosearch /etc/nginx/sites-enabled/
-rm -f /etc/nginx/sites-enabled/default
+# Конфигурация для AdGuard Home
+sudo tee /etc/nginx/sites-available/$SUBDOMAIN_ADGUARD.$DOMAIN > /dev/null <<EOF
+server {
+    listen 80;
+    server_name $SUBDOMAIN_ADGUARD.$DOMAIN;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000; # Порт для начальной настройки AdGuard
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    }
+}
+EOF
+
+# Конфигурация для Lampa
+sudo tee /etc/nginx/sites-available/$SUBDOMAIN_LAMPA.$DOMAIN > /dev/null <<EOF
+server {
+    listen 80;
+    server_name $SUBDOMAIN_LAMPA.$DOMAIN;
+
+    location / {
+        proxy_pass http://127.0.0.1:8090; # Порт по умолчанию для Lampac
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "Upgrade";
+        proxy_set_header Host \$host;
+    }
+}
+EOF
+
+# Создание символических ссылок
+sudo ln -s /etc/nginx/sites-available/$SUBDOMAIN_3XUI.$DOMAIN /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/$SUBDOMAIN_ADGUARD.$DOMAIN /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/$SUBDOMAIN_LAMPA.$DOMAIN /etc/nginx/sites-enabled/
+
+# Получение SSL-сертификатов
+sudo certbot --nginx -d $SUBDOMAIN_3XUI.$DOMAIN -d $SUBDOMAIN_ADGUARD.$DOMAIN -d $SUBDOMAIN_LAMPA.$DOMAIN --email $EMAIL --agree-tos --no-eff-email -n
 
 # Перезапуск Nginx
-echo -e "${GREEN}Перезапуск Nginx...${NC}"
-systemctl restart nginx
+sudo systemctl restart nginx
 
-# Настройка SSL (опционально)
-read -p "Хотите настроить SSL через Let's Encrypt? (y/n): " ssl_choice
-if [ "$ssl_choice" = "y" ]; then
-    read -p "Введите доменное имя: " domain_name
-    certbot --nginx -d $domain_name
-fi
-
-# Настройка автоматического обновления сертификатов
-if [ "$ssl_choice" = "y" ]; then
-    echo "0 0 1 * * certbot renew --quiet" | crontab -
-fi
-
-echo -e "${GREEN}Установка завершена!${NC}"
-echo -e "${YELLOW}Доступ к приложению:${NC}"
-if [ "$ssl_choice" = "y" ]; then
-    echo -e "https://$domain_name"
-else
-    echo -e "http://$(hostname -I | awk '{print $1}')"
-fi 
+# --- Завершение ---
+echo "================================================================="
+echo "Установка завершена!"
+echo ""
+echo "Адреса для доступа к сервисам:"
+echo "3x-ui: https://$SUBDOMAIN_3XUI.$DOMAIN"
+echo "AdGuard Home: https://$SUBDOMAIN_ADGUARD.$DOMAIN"
+echo "Lampa: https://$SUBDOMAIN_LAMPA.$DOMAIN"
+echo ""
+echo "ВАЖНО: Дальнейшая настройка производится через веб-интерфейсы."
+echo "================================================================="
